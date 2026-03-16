@@ -1,0 +1,481 @@
+# First, let's check if colorama is available or write the enhanced version
+# I'll create the complete enhanced game with color support
+
+game_code = '''
+import os
+import sys
+
+# Try to import colorama, fallback to no colors if not available
+try:
+    from colorama import init, Fore, Back, Style
+    init(autoreset=True)
+    COLOR_ENABLED = True
+except ImportError:
+    COLOR_ENABLED = False
+    # Dummy classes for fallback
+    class DummyFore:
+        def __getattr__(self, name): return ''
+    class DummyBack:
+        def __getattr__(self, name): return ''
+    class DummyStyle:
+        def __getattr__(self, name): return ''
+    Fore = DummyFore()
+    Back = DummyBack()
+    Style = DummyStyle()
+
+class EronFarmGame:
+    def __init__(self):
+        self.player_name = "Eron"
+        self.day = 1
+        self.money = 100
+        self.energy = 100
+        self.max_energy = 100
+        self.season = "Spring"
+        self.year = 1
+        
+        # Farm plots (3x3 grid)
+        self.farm_size = 3
+        self.plots = [[None for _ in range(self.farm_size)] for _ in range(self.farm_size)]
+        
+        # Inventory
+        self.inventory = {
+            'seeds': {'wheat': 5, 'corn': 2, 'tomato': 1},
+            'produce': {},
+            'tools': {'hoe': 1, 'watering_can': 1}
+        }
+        
+        # Crop database with colors
+        self.crops = {
+            'wheat': {
+                'cost': 10, 'sell': 25, 'days_to_grow': 2, 'energy_cost': 10,
+                'color': Fore.YELLOW, 'ascii': ['〰', '╱╲', '▓▓'], 'name': 'Wheat'
+            },
+            'corn': {
+                'cost': 20, 'sell': 50, 'days_to_grow': 3, 'energy_cost': 15,
+                'color': Fore.YELLOW, 'ascii': ['🌱', '││', '╔╗'], 'name': 'Corn'
+            },
+            'tomato': {
+                'cost': 30, 'sell': 80, 'days_to_grow': 4, 'energy_cost': 20,
+                'color': Fore.RED, 'ascii': ['🌿', '○○', '●●'], 'name': 'Tomato'
+            },
+            'pumpkin': {
+                'cost': 50, 'sell': 150, 'days_to_grow': 5, 'energy_cost': 25,
+                'color': Fore.LIGHTYELLOW_EX, 'ascii': ['🍃', '◯◯', '⬤⬤'], 'name': 'Pumpkin'
+            }
+        }
+        
+        self.running = True
+        
+    def color(self, text, fg=None, bg=None, style=None):
+        """Apply colors if enabled"""
+        if not COLOR_ENABLED:
+            return text
+        result = ""
+        if style: result += style
+        if fg: result += fg
+        if bg: result += bg
+        return result + text + Style.RESET_ALL
+        
+    def clear_screen(self):
+        """Clear console"""
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
+    def draw_box(self, title, content, width=60):
+        """Draw a nice box with title"""
+        print(self.color("╔" + "═" * (width-2) + "╗", fg=Fore.CYAN))
+        print(self.color("║" + title.center(width-2) + "║", fg=Fore.CYAN))
+        print(self.color("╠" + "═" * (width-2) + "╣", fg=Fore.CYAN))
+        for line in content.split('\\n'):
+            print(self.color("║ " + line.ljust(width-4) + " ║", fg=Fore.WHITE))
+        print(self.color("╚" + "═" * (width-2) + "╝", fg=Fore.CYAN))
+        
+    def display_header(self):
+        """Display enhanced game header"""
+        # Title banner
+        print()
+        print(self.color("    🌾 ╔══════════════════════════════════════════╗ 🌾", fg=Fore.YELLOW))
+        print(self.color("       ║      E R O N ' S   F A R M             ║", fg=Fore.YELLOW, style=Style.BRIGHT))
+        print(self.color("    🚜 ╚══════════════════════════════════════════╝ 🚜", fg=Fore.YELLOW))
+        print()
+        
+        # Stats bar
+        stats = f"📅 Day {self.day} │ {self.season} │ Year {self.year} │ 💰 ${self.money} │ ⚡ {self.energy}/{self.max_energy}"
+        print(self.color("┌" + "─" * 58 + "┐", fg=Fore.GREEN))
+        print(self.color("│" + stats.center(58) + "│", fg=Fore.WHITE))
+        print(self.color("└" + "─" * 58 + "┘", fg=Fore.GREEN))
+        
+    def get_plot_display(self, plot):
+        """Get visual representation of a plot"""
+        if plot is None:
+            # Empty soil with texture
+            return self.color("▓▓", fg=Fore.LIGHTBLACK_EX) + self.color("〰", fg=Fore.YELLOW)
+        
+        crop = self.crops[plot['crop']]
+        stage_idx = {'seed': 0, 'growing': 1, 'mature': 2}[plot['stage']]
+        
+        if plot['stage'] == 'mature':
+            return crop['color'] + crop['ascii'][stage_idx] + self.color("✦", fg=Fore.LIGHTYELLOW_EX)
+        elif plot['stage'] == 'growing':
+            water_status = self.color("💧", fg=Fore.CYAN) if plot['watered'] else self.color("░", fg=Fore.LIGHTBLACK_EX)
+            return crop['color'] + crop['ascii'][stage_idx] + water_status
+        else:  # seed
+            water_status = self.color("💧", fg=Fore.CYAN) if plot['watered'] else self.color("░", fg=Fore.LIGHTBLACK_EX)
+            return self.color("🌱", fg=Fore.GREEN) + water_status
+            
+    def display_farm(self):
+        """Visual farm grid with borders"""
+        print()
+        print(self.color("    🚜 YOUR FARM:", fg=Fore.LIGHTCYAN_EX, style=Style.BRIGHT))
+        print()
+        
+        # Column headers
+        header = "     "
+        for i in range(self.farm_size):
+            header += self.color(f"  [{i}] ", fg=Fore.LIGHTBLACK_EX)
+        print(header)
+        
+        # Grid rows
+        for row_idx, row in enumerate(self.plots):
+            row_str = self.color(f" [{row_idx}] ", fg=Fore.LIGHTBLACK_EX)
+            for plot in row:
+                row_str += "│" + self.get_plot_display(plot)
+            row_str += "│"
+            print("     " + self.color("┌───┬───┬───┐", fg=Fore.LIGHTBLACK_EX))
+            print("     " + row_str)
+        print("     " + self.color("└───┴───┴───┘", fg=Fore.LIGHTBLACK_EX))
+        
+        # Legend
+        print()
+        legend = (self.color("▓▓", fg=Fore.LIGHTBLACK_EX) + "=Empty  " +
+                 self.color("🌱", fg=Fore.GREEN) + "=Seed  " +
+                 self.color("🌿", fg=Fore.GREEN) + "=Growing  " +
+                 self.color("🌾", fg=Fore.YELLOW) + "=Mature  " +
+                 self.color("💧", fg=Fore.CYAN) + "=Watered")
+        print("     " + legend)
+        
+    def display_inventory(self):
+        """Styled inventory display"""
+        print()
+        print(self.color("┌───────────────── INVENTORY ─────────────────┐", fg=Fore.MAGENTA))
+        
+        # Seeds section
+        print(self.color("│ 🌱 SEEDS:                                    │", fg=Fore.GREEN))
+        has_seeds = False
+        for seed, count in self.inventory['seeds'].items():
+            if count > 0:
+                has_seeds = True
+                crop_info = self.crops[seed]
+                line = f"│    • {crop_info['name']:<10} x{count:<3} (${crop_info['cost']}→${crop_info['sell']}) │"
+                print(self.color(line, fg=Fore.WHITE))
+        if not has_seeds:
+            print(self.color("│    (No seeds - visit the shop!)              │", fg=Fore.LIGHTBLACK_EX))
+            
+        # Produce section
+        print(self.color("│ 🎒 PRODUCE:                                  │", fg=Fore.YELLOW))
+        if not self.inventory['produce']:
+            print(self.color("│    (Empty - harvest some crops!)             │", fg=Fore.LIGHTBLACK_EX))
+        else:
+            for item, count in self.inventory['produce'].items():
+                value = self.crops[item]['sell'] * count
+                line = f"│    • {self.crops[item]['name']:<10} x{count:<3} (Value: ${value})     │"
+                print(self.color(line, fg=Fore.WHITE))
+                
+        print(self.color("└─────────────────────────────────────────────┘", fg=Fore.MAGENTA))
+        
+    def plant_crop(self):
+        """Enhanced planting interface"""
+        print()
+        print(self.color("╔═══════════════ PLANTING MODE ═══════════════╗", fg=Fore.GREEN))
+        
+        available_seeds = {k: v for k, v in self.inventory['seeds'].items() if v > 0}
+        if not available_seeds:
+            print(self.color("║ ❌ No seeds available! Visit the shop.       ║", fg=Fore.RED))
+            print(self.color("╚═════════════════════════════════════════════╝", fg=Fore.GREEN))
+            return
+            
+        print(self.color("║ Available Seeds:                             ║", fg=Fore.WHITE))
+        seed_list = list(available_seeds.keys())
+        for idx, (seed, count) in enumerate(available_seeds.items(), 1):
+            crop = self.crops[seed]
+            print(self.color(f"║  {idx}. {crop['name']:<10} (x{count}) - {crop['days_to_grow']} days", fg=Fore.WHITE))
+        print(self.color("╚═════════════════════════════════════════════╝", fg=Fore.GREEN))
+        
+        try:
+            row = int(input(self.color("Enter row (0-2): ", fg=Fore.CYAN)))
+            col = int(input(self.color("Enter column (0-2): ", fg=Fore.CYAN)))
+            
+            if not (0 <= row < 3 and 0 <= col < 3):
+                print(self.color("❌ Invalid coordinates!", fg=Fore.RED))
+                return
+            if self.plots[row][col] is not None:
+                print(self.color("❌ Plot occupied!", fg=Fore.RED))
+                return
+                
+            choice = int(input(self.color("Select seed number: ", fg=Fore.CYAN)))
+            if choice < 1 or choice > len(seed_list):
+                print(self.color("❌ Invalid selection!", fg=Fore.RED))
+                return
+                
+            seed_type = seed_list[choice-1]
+            energy_cost = self.crops[seed_type]['energy_cost']
+            
+            if self.energy < energy_cost:
+                print(self.color(f"❌ Need {energy_cost} energy!", fg=Fore.RED))
+                return
+                
+            self.plots[row][col] = {
+                'crop': seed_type,
+                'stage': 'seed',
+                'days_grown': 0,
+                'watered': False
+            }
+            self.inventory['seeds'][seed_type] -= 1
+            self.energy -= energy_cost
+            
+            print(self.color(f"✅ Planted {self.crops[seed_type]['name']} at ({row},{col})!", fg=Fore.GREEN))
+            
+        except ValueError:
+            print(self.color("❌ Invalid input!", fg=Fore.RED))
+            
+    def water_crops(self):
+        """Watering with visual feedback"""
+        print()
+        print(self.color("💧 Watering crops...", fg=Fore.CYAN))
+        
+        watered = 0
+        for row in range(3):
+            for col in range(3):
+                plot = self.plots[row][col]
+                if plot and not plot['watered'] and self.energy >= 5:
+                    plot['watered'] = True
+                    self.energy -= 5
+                    watered += 1
+                    print(self.color(f"  ✓ ({row},{col}) watered", fg=Fore.LIGHTCYAN_EX))
+                    
+        if watered > 0:
+            print(self.color(f"✅ Watered {watered} crops (-{watered*5}⚡)", fg=Fore.GREEN))
+        else:
+            print(self.color("No crops need watering.", fg=Fore.YELLOW))
+            
+    def harvest_crop(self):
+        """Harvesting with animation style"""
+        print()
+        print(self.color("╔══════════════ HARVEST TIME ═══════════════╗", fg=Fore.YELLOW))
+        
+        harvested = 0
+        for row in range(3):
+            for col in range(3):
+                plot = self.plots[row][col]
+                if plot and plot['stage'] == 'mature':
+                    crop_type = plot['crop']
+                    crop_name = self.crops[crop_type]['name']
+                    
+                    if crop_type not in self.inventory['produce']:
+                        self.inventory['produce'][crop_type] = 0
+                    self.inventory['produce'][crop_type] += 1
+                    self.plots[row][col] = None
+                    harvested += 1
+                    
+                    print(self.color(f"║  🌾 Harvested {crop_name} from ({row},{col})!", fg=Fore.LIGHTYELLOW_EX))
+                    
+        if harvested > 0:
+            print(self.color(f"║  Total: {harvested} crops harvested!          ║", fg=Fore.GREEN))
+        else:
+            print(self.color("║  No mature crops ready...                  ║", fg=Fore.LIGHTBLACK_EX))
+        print(self.color("╚═══════════════════════════════════════════╝", fg=Fore.YELLOW))
+        
+    def shop(self):
+        """Enhanced shop interface"""
+        while True:
+            print()
+            print(self.color("╔════════════════ GENERAL STORE ═══════════════╗", fg=Fore.LIGHTMAGENTA_EX))
+            print(self.color(f"║  💰 Your Money: ${self.money:<35} ║", fg=Fore.YELLOW))
+            print(self.color("╠══════════════════════════════════════════════╣", fg=Fore.LIGHTMAGENTA_EX))
+            print(self.color("║  1. 🌱 Buy Seeds                             ║", fg=Fore.WHITE))
+            print(self.color("║  2. 💵 Sell Produce                          ║", fg=Fore.WHITE))
+            print(self.color("║  3. 🚪 Exit Shop                             ║", fg=Fore.WHITE))
+            print(self.color("╚══════════════════════════════════════════════╝", fg=Fore.LIGHTMAGENTA_EX))
+            
+            choice = input(self.color("Choice: ", fg=Fore.CYAN)).strip()
+            
+            if choice == '1':
+                print()
+                print(self.color("┌────────────── SEED CATALOG ──────────────┐", fg=Fore.GREEN))
+                seeds = list(self.crops.items())
+                for idx, (key, info) in enumerate(seeds, 1):
+                    profit = info['sell'] - info['cost']
+                    print(self.color(f"│ {idx}. {info['name']:<10} ${info['cost']:<3} → ${info['sell']:<3} (Profit: ${profit}) │", fg=Fore.WHITE))
+                print(self.color("└──────────────────────────────────────────┘", fg=Fore.GREEN))
+                
+                try:
+                    seed_idx = int(input(self.color("Select seed (1-4): ", fg=Fore.CYAN))) - 1
+                    if 0 <= seed_idx < len(seeds):
+                        seed_key, seed_info = seeds[seed_idx]
+                        amount = int(input(self.color("Amount: ", fg=Fore.CYAN)))
+                        cost = seed_info['cost'] * amount
+                        
+                        if self.money >= cost:
+                            self.money -= cost
+                            self.inventory['seeds'][seed_key] = self.inventory['seeds'].get(seed_key, 0) + amount
+                            print(self.color(f"✅ Bought {amount} {seed_info['name']} seeds!", fg=Fore.GREEN))
+                        else:
+                            print(self.color("❌ Not enough money!", fg=Fore.RED))
+                except ValueError:
+                    print(self.color("❌ Invalid input!", fg=Fore.RED))
+                    
+            elif choice == '2':
+                if not self.inventory['produce']:
+                    print(self.color("❌ No produce to sell!", fg=Fore.RED))
+                    continue
+                    
+                print()
+                print(self.color("┌────────────── YOUR PRODUCE ──────────────┐", fg=Fore.YELLOW))
+                total_value = 0
+                for produce, count in self.inventory['produce'].items():
+                    value = self.crops[produce]['sell'] * count
+                    total_value += value
+                    print(self.color(f"│ • {self.crops[produce]['name']:<10} x{count:<3} = ${value:<4}            │", fg=Fore.WHITE))
+                print(self.color(f"│ Total Value: ${total_value:<33} │", fg=Fore.GREEN))
+                print(self.color("└──────────────────────────────────────────┘", fg=Fore.YELLOW))
+                
+                sell = input(self.color("Sell all? (y/n): ", fg=Fore.CYAN)).lower()
+                if sell == 'y':
+                    self.money += total_value
+                    self.inventory['produce'].clear()
+                    print(self.color(f"✅ Sold everything for ${total_value}!")  , fg=Fore.GREEN))
+                    
+            elif choice == '3':
+                break
+                
+    def next_day(self):
+        """Day transition with growth"""
+        print()
+        print(self.color("🌙 Night falls on the farm...", fg=Fore.LIGHTBLUE_EX))
+        
+        # Grow crops
+        growth_report = []
+        for row in range(3):
+            for col in range(3):
+                plot = self.plots[row][col]
+                if plot:
+                    if plot['watered']:
+                        plot['days_grown'] += 1
+                        crop_info = self.crops[plot['crop']]
+                        
+                        if plot['days_grown'] >= crop_info['days_to_grow']:
+                            if plot['stage'] != 'mature':
+                                plot['stage'] = 'mature'
+                                growth_report.append(f"{crop_info['name']} at ({row},{col}) is ready!")
+                        elif plot['days_grown'] > 0:
+                            plot['stage'] = 'growing'
+                            
+                    plot['watered'] = False
+                    
+        self.day += 1
+        self.energy = self.max_energy
+        
+        # Season change
+        if self.day > 30:
+            self.day = 1
+            seasons = ["Spring", "Summer", "Fall", "Winter"]
+            current_idx = seasons.index(self.season)
+            self.season = seasons[(current_idx + 1) % 4]
+            if self.season == "Spring":
+                self.year += 1
+                
+        print(self.color("☀️ A new day begins!", fg=Fore.YELLOW, style=Style.BRIGHT))
+        print(self.color(f"📅 Day {self.day} of {self.season}, Year {self.year}", fg=Fore.WHITE))
+        print(self.color(f"⚡ Energy restored to {self.max_energy}", fg=Fore.GREEN))
+        
+        if growth_report:
+            print(self.color("\\n🌾 Growth Report:", fg=Fore.GREEN))
+            for report in growth_report:
+                print(self.color(f"  ✓ {report}", fg=Fore.LIGHTGREEN_EX))
+                
+    def show_help(self):
+        """Help with styling"""
+        help_text = """
+╔════════════════ HOW TO PLAY ════════════════╗
+║  1. PLANT seeds in empty soil (▓▓)          ║
+║  2. WATER crops daily or they won't grow    ║
+║  3. WAIT for crops to mature (🌾)           ║
+║  4. HARVEST and sell at the shop            ║
+║  5. BUY better seeds, expand your farm      ║
+╠═════════════════════════════════════════════╣
+║  TIPS:                                      ║
+║  • Wheat = Fast & Cheap (2 days)            ║
+║  • Pumpkin = Slow but Profitable (5 days)   ║
+║  • Water daily! Dry crops don't grow        ║
+║  • Energy restores each morning             ║
+╚═════════════════════════════════════════════╝
+        """
+        print(self.color(help_text, fg=Fore.CYAN))
+        
+    def main_menu(self):
+        """Enhanced main menu"""
+        while self.running:
+            self.clear_screen()
+            self.display_header()
+            self.display_farm()
+            self.display_inventory()
+            
+            print()
+            print(self.color("┌────────────── MAIN MENU ──────────────┐", fg=Fore.LIGHTCYAN_EX))
+            print(self.color("│  1. 🌱 Plant Crop    5. 🌙 Sleep      │", fg=Fore.WHITE))
+            print(self.color("│  2. 💧 Water Crops   6. ❓ Help       │", fg=Fore.WHITE))
+            print(self.color("│  3. 🌾 Harvest       7. 🚪 Quit       │", fg=Fore.WHITE))
+            print(self.color("│  4. 🏪 Shop                           │", fg=Fore.WHITE))
+            print(self.color("└───────────────────────────────────────┘", fg=Fore.LIGHTCYAN_EX))
+            
+            choice = input(self.color("\\nWhat would you like to do? ", fg=Fore.YELLOW)).strip()
+            
+            if choice == '1':
+                self.plant_crop()
+                input(self.color("\\nPress Enter to continue...", fg=Fore.LIGHTBLACK_EX))
+            elif choice == '2':
+                self.water_crops()
+                input(self.color("\\nPress Enter to continue...", fg=Fore.LIGHTBLACK_EX))
+            elif choice == '3':
+                self.harvest_crop()
+                input(self.color("\\nPress Enter to continue...", fg=Fore.LIGHTBLACK_EX))
+            elif choice == '4':
+                self.shop()
+            elif choice == '5':
+                self.next_day()
+                input(self.color("\\nPress Enter to continue...", fg=Fore.LIGHTBLACK_EX))
+            elif choice == '6':
+                self.show_help()
+                input(self.color("\\nPress Enter to continue...", fg=Fore.LIGHTBLACK_EX))
+            elif choice == '7':
+                print(self.color("\\n👋 Thanks for playing Eron's Farm!", fg=Fore.YELLOW))
+                self.running = False
+            else:
+                print(self.color("❌ Invalid choice!", fg=Fore.RED))
+                input("Press Enter...")
+
+
+# Start game
+if __name__ == "__main__":
+    game = EronFarmGame()
+    print()
+    print(game.color("╔══════════════════════════════════════════╗", fg=Fore.YELLOW))
+    print(game.color("║                                          ║", fg=Fore.YELLOW))
+    print(game.color("║        🌾  WELCOME TO ERON'S FARM  🚜    ║", fg=Fore.YELLOW, style=Style.BRIGHT))
+    print(game.color("║                                          ║", fg=Fore.YELLOW))
+    print(game.color("║   You've inherited a small farm plot!    ║", fg=Fore.WHITE))
+    print(game.color("║   Turn it into a thriving empire!        ║", fg=Fore.WHITE))
+    print(game.color("║                                          ║", fg=Fore.YELLOW))
+    print(game.color("╚══════════════════════════════════════════╝", fg=Fore.YELLOW))
+    input(game.color("\\nPress Enter to start your farming journey...", fg=Fore.GREEN))
+    game.main_menu()
+'''
+
+print("Enhanced Eron's Farm game code generated successfully!")
+print(f"Total lines: {len(game_code.splitlines())}")
+print("\nFeatures included:")
+print("- Colorama integration with fallback")
+print("- Box-drawing UI elements (╔═╗╚╝│┌┐└┘)")
+print("- Colored crop stages and status indicators")
+print("- ASCII art farm representation")
+print("- Season system (Spring/Summer/Fall/Winter)")
+print("- Enhanced shop and inventory displays")

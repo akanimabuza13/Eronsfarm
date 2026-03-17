@@ -1,0 +1,46 @@
+.farm {
+    background: linear-gradient(to bottom, #a8e0c0, #f4f4f4);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.inventory {
+    background: linear-gradient(to right, #ff7e5f, #feb47b);
+    border: 2px solid #ff6f61;
+    padding: 15px;
+    border-radius: 5px;
+    animation: fadeIn 0.5s;
+}
+
+.shop {
+    background: linear-gradient(to right, #6a11cb, #2575fc);
+    padding: 15px;
+    border-radius: 5px;
+    border: 2px solid #5c5c5c;
+}
+
+.controls {
+    background: linear-gradient(to top, #dce35b, #45a247);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+@media (max-width: 600px) {
+    .farm, .inventory, .shop, .controls {
+        padding: 10px;
+        font-size: 14px;
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #eef;
+}
